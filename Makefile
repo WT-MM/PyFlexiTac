@@ -1,12 +1,12 @@
 # Makefile
 
 define HELP_MESSAGE
-PyFlexiTac
+flexitac
 
 # Installing
 
-1. Create a new Conda environment: `conda create --name PyFlexiTac python=3.11`
-2. Activate the environment: `conda activate PyFlexiTac`
+1. Create a new Conda environment: `conda create --name flexitac python=3.11`
+2. Activate the environment: `conda activate flexitac`
 3. Install the package: `make install-dev`
 
 # Running Tests
@@ -40,7 +40,7 @@ push-to-pypi: build-for-pypi
 #       Static Checks      #
 # ------------------------ #
 
-excluded := ./.venv
+excluded := ./.venv ./references
 exclude_args := $(foreach d,$(excluded),-path "$(d)" -prune -o)
 
 py-files := $(shell find . $(exclude_args) -name '*.py' -print)
