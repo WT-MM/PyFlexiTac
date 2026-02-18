@@ -53,13 +53,13 @@ format:
 static-checks:
 	@ruff format --check $(py-files)
 	@ruff check $(py-files)
-	@mypy --install-types --non-interactive $(py-files)
-.PHONY: lint
+	@mypy $(py-files)
+.PHONY: static-checks
 
 # ------------------------ #
 #        Unit tests        #
 # ------------------------ #
 
 test:
-	python -m pytest
+	PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest
 .PHONY: test

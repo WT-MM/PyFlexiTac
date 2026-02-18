@@ -4,18 +4,20 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import re
 import shlex
 import subprocess
-import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 from flexitac.firmware.profiles import SUPPORTED_AVR_FQBNS, get_profile, profile_names
 from flexitac.firmware.render import FirmwareRenderError, parse_set_overrides, render_template_to_file, resolve_macros
+from flexitac.logging_utils import configure_logging
 
 FQBN_RE = re.compile(r"[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+")
+LOGGER = logging.getLogger("flexitac")
 
 
 class FlashError(RuntimeError):
@@ -102,6 +104,7 @@ def main(argv: list[str] | None = None) -> int:
     """Run the flash CLI entrypoint."""
     parser = build_parser()
     args = parser.parse_args(argv)
+    logger = configure_logging(verbose=args.verbose)
 
     try:
         if args.list_profiles:
@@ -140,13 +143,21 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         mode = "Dry run complete" if result.dry_run else "Flash complete"
-        print(f"{mode}: port={result.port} fqbn={result.fqbn} rows={result.rows} cols={result.cols} baud={result.baud}")
-        print(f"compile: {result.compile_command}")
-        print(f"upload:  {result.upload_command}")
-        print(f"sketch:  {result.sketch_path}")
+        logger.info(
+            "%s: port=%s fqbn=%s rows=%s cols=%s baud=%s",
+            mode,
+            result.port,
+            result.fqbn,
+            result.rows,
+            result.cols,
+            result.baud,
+        )
+        logger.info("compile: %s", result.compile_command)
+        logger.info("upload:  %s", result.upload_command)
+        logger.info("sketch:  %s", result.sketch_path)
         return 0
     except (FlashError, FirmwareRenderError, ValueError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        logger.error("%s", exc)
         return 2
 
 
@@ -201,7 +212,7 @@ def flash_firmware(
     )
 
     if print_config:
-        print(json.dumps(macros, indent=2, sort_keys=True))
+        LOGGER.info("resolved firmware macros:\n%s", json.dumps(macros, indent=2, sort_keys=True))
 
     board_opts = _normalize_board_options(board_options)
     selected_port, selected_fqbn = select_board(port=port, fqbn=fqbn, expert=expert, verbose=verbose)
@@ -240,8 +251,8 @@ def flash_firmware(
         )
 
         if verbose or dry_run:
-            print(f"compile cmd: {_shell_join(compile_cmd)}")
-            print(f"upload cmd: {_shell_join(upload_cmd)}")
+            LOGGER.info("compile cmd: %s", _shell_join(compile_cmd))
+            LOGGER.info("upload cmd: %s", _shell_join(upload_cmd))
 
         if not dry_run:
             _run_command(compile_cmd, verbose=verbose)
@@ -307,14 +318,20 @@ def select_board(*, port: str | None, fqbn: str | None, expert: bool, verbose: b
             msg = (
                 "no matching board found after applying filters. "
                 "Specify --port and --fqbn explicitly. Available detected boards:\n"
-                f"{available}"
+                f"{available}\n{_board_scan_hint()}"
             )
             raise FlashError(msg)
-        msg = "no boards detected. Connect the board and retry, or pass --port and --fqbn explicitly."
+        msg = (
+            "no boards detected. Connect the board and retry, or pass --port and --fqbn explicitly.\n"
+            f"{_board_scan_hint()}"
+        )
         raise FlashError(msg)
 
     options = "\n".join(f"  - {item.port} ({item.fqbn})" for item in filtered)
-    msg = f"multiple matching boards detected. Specify --port and --fqbn explicitly. Candidates:\n{options}"
+    msg = (
+        "multiple matching boards detected. Specify --port and --fqbn explicitly. Candidates:\n"
+        f"{options}\n{_board_scan_hint()}"
+    )
     raise FlashError(msg)
 
 
@@ -334,7 +351,7 @@ def list_boards(*, verbose: bool) -> list[BoardCandidate]:
                 return _dedupe_candidates(candidates)
             except json.JSONDecodeError:
                 if verbose:
-                    print("warning: failed to parse JSON board list; falling back to text mode")
+                    LOGGER.warning("failed to parse JSON board list; falling back to text mode")
 
     text_result = _run_command(["arduino-cli", "board", "list"], verbose=verbose, capture_output=True, check=False)
     if text_result.returncode != 0:
@@ -389,16 +406,16 @@ def list_installed_cores() -> set[str]:
 def _print_profiles() -> None:
     for name in profile_names():
         profile = get_profile(name)
-        print(f"{name}: {profile.description}")
+        LOGGER.info("%s: %s", name, profile.description)
 
 
 def _print_boards(*, verbose: bool) -> None:
     boards = list_boards(verbose=verbose)
     if not boards:
-        print("No boards detected.")
+        LOGGER.info("No boards detected.")
         return
     for candidate in boards:
-        print(f"{candidate.port} | {candidate.fqbn} | {candidate.name}")
+        LOGGER.info("%s | %s | %s", candidate.port, candidate.fqbn, candidate.name)
 
 
 def _build_common_overrides(
@@ -502,9 +519,9 @@ def _run_command(
         stdout = result.stdout.strip()
         stderr = result.stderr.strip()
         if stdout:
-            print(stdout)
+            LOGGER.debug(stdout)
         if stderr:
-            print(stderr, file=sys.stderr)
+            LOGGER.debug(stderr)
 
     if check and result.returncode != 0:
         stderr = (result.stderr or "").strip()
@@ -640,6 +657,10 @@ def _dedupe_candidates(candidates: list[BoardCandidate]) -> list[BoardCandidate]
         deduped.append(candidate)
 
     return deduped
+
+
+def _board_scan_hint() -> str:
+    return "Run diagnostics with: uv run python -m flexitac.scan --verbose"
 
 
 def _shell_join(cmd: list[str]) -> str:

@@ -37,7 +37,7 @@ def test_select_board_rejects_ambiguous_candidates(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(flexitac.flash, "list_boards", _list_boards)
 
-    with pytest.raises(FlashError):
+    with pytest.raises(FlashError, match="flexitac.scan"):
         select_board(port=None, fqbn=None, expert=False, verbose=False)
 
 

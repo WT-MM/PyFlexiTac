@@ -1,6 +1,7 @@
 # flexitac
 
 `flexitac` is a Python package for interacting with FlexiTac tactile sensors and flashing firmware via `arduino-cli`.
+CLI output uses colorized logging (via `colorlog`) when available.
 
 ## Install
 
@@ -65,6 +66,20 @@ python -m flexitac.flash --list-profiles
 python -m flexitac.flash --list-boards
 python -m flexitac.flash --profile 16x16 --dry-run --verbose
 python -m flexitac.flash --profile 16x32 --print-config
+```
+
+### Scan and Diagnose Board Detection
+
+Use the dedicated scanner when auto-detection fails:
+
+```bash
+uv run python -m flexitac.scan --verbose
+```
+
+Or with the installed console script:
+
+```bash
+flexitac-scan --verbose
 ```
 
 ### Explicit Board/Port
