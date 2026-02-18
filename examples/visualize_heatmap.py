@@ -33,6 +33,14 @@ def main() -> int:
     args = build_parser().parse_args()
 
     try:
+        matplotlib = importlib.import_module("matplotlib")
+        # Prefer an interactive backend so plt.show() opens a window (required before pyplot)
+        for backend in ("TkAgg", "Qt5Agg", "GTK4Agg", "GTK3Agg", "WXAgg"):
+            try:
+                matplotlib.use(backend)
+                break
+            except Exception:
+                pass
         pyplot = importlib.import_module("matplotlib.pyplot")
         animation_mod = importlib.import_module("matplotlib.animation")
     except ImportError as exc:
@@ -43,6 +51,16 @@ def main() -> int:
             "  pip install 'flexitac[examples]'"
         )
         raise SystemExit(msg) from exc
+
+    if matplotlib.get_backend().lower() == "agg":
+        print(
+            "No interactive display available (matplotlib is using the Agg backend).\n"
+            "This example needs a GUI. Options:\n"
+            "  - Run on a machine with a display, or\n"
+            "  - Use X11 forwarding: ssh -X ... then run this script, or\n"
+            "  - Set DISPLAY and X authority (e.g. xauth) if using a remote display."
+        )
+        return 1
 
     processing = ProcessingConfig(
         threshold=args.threshold,
@@ -99,7 +117,9 @@ def main() -> int:
 
         return [heatmap]
 
-    animation_mod.FuncAnimation(figure, update, interval=args.interval_ms, blit=False)
+    anim = animation_mod.FuncAnimation(
+        figure, update, interval=args.interval_ms, blit=False, cache_frame_data=False
+    )
 
     try:
         pyplot.show()
