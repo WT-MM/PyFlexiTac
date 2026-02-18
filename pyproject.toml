@@ -18,14 +18,17 @@ dependencies = [
 Repository = "https://github.com/WT-MM/PyFlexiTac.git"
 
 [project.scripts]
-flexitac-flash = "flexitac.flash:main"
-flexitac-scan = "flexitac.scan:main"
+flexitac-flash = "flexitac.scripts.flash:main"
+flexitac-scan = "flexitac.scripts.scan:main"
 
 [project.optional-dependencies]
 dev = [
     "ruff",
     "mypy",
     "pytest",
+]
+examples = [
+    "matplotlib",
 ]
 
 [build-system]

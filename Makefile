@@ -40,7 +40,7 @@ push-to-pypi: build-for-pypi
 #       Static Checks      #
 # ------------------------ #
 
-excluded := ./.venv ./references
+excluded := ./.venv ./references ./build ./dist ./flexitac.egg-info
 exclude_args := $(foreach d,$(excluded),-path "$(d)" -prune -o)
 
 py-files := $(shell find . $(exclude_args) -name '*.py' -print)

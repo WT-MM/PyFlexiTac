@@ -43,9 +43,34 @@ for frame in sensor.iter_frames(limit=10):
 sensor.close()
 ```
 
+## Examples
+
+The repo includes runnable examples in `/examples`.
+
+Install visualization extras if needed:
+
+```bash
+pip install "flexitac[examples]"
+```
+
+### 1) Stream frames + print metrics
+
+```bash
+python examples/stream_frames.py --port /dev/ttyUSB0 --rows 16 --cols 32
+```
+
+### 2) Live heatmap visualization
+
+```bash
+python examples/visualize_heatmap.py --port /dev/ttyUSB0 --rows 16 --cols 32
+```
+
+Both scripts accept `--help` for full argument lists.
+
 ## Flashing Firmware
 
 The flash command generates a configured `.ino` sketch from a template and uploads it with `arduino-cli`.
+CLI implementation modules live in `/flexitac/scripts` (with backward-compatible shims at `flexitac.flash` and `flexitac.scan`).
 
 ### Prerequisite
 

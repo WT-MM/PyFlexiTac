@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-import flexitac.flash
-from flexitac.flash import BoardCandidate, FlashError, flash_firmware, select_board
+import flexitac.scripts.flash as flash_cli
+from flexitac.scripts.flash import BoardCandidate, FlashError, flash_firmware, select_board
 
 
 def test_select_board_uses_unique_detected_candidate(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -18,7 +18,7 @@ def test_select_board_uses_unique_detected_candidate(monkeypatch: pytest.MonkeyP
         del verbose
         return candidates
 
-    monkeypatch.setattr(flexitac.flash, "list_boards", _list_boards)
+    monkeypatch.setattr(flash_cli, "list_boards", _list_boards)
 
     port, fqbn = select_board(port=None, fqbn=None, expert=False, verbose=False)
     assert port == "/dev/ttyUSB0"
@@ -35,7 +35,7 @@ def test_select_board_rejects_ambiguous_candidates(monkeypatch: pytest.MonkeyPat
         del verbose
         return candidates
 
-    monkeypatch.setattr(flexitac.flash, "list_boards", _list_boards)
+    monkeypatch.setattr(flash_cli, "list_boards", _list_boards)
 
     with pytest.raises(FlashError, match="flexitac.scan"):
         select_board(port=None, fqbn=None, expert=False, verbose=False)
@@ -53,8 +53,8 @@ def test_flash_firmware_dry_run_emits_rendered_sketch(monkeypatch: pytest.Monkey
         del port, fqbn, expert, verbose
         return "/dev/ttyUSB0", "arduino:avr:uno"
 
-    monkeypatch.setattr(flexitac.flash, "select_board", _select_board)
-    monkeypatch.setattr(flexitac.flash, "ensure_core_installed", lambda fqbn: None)
+    monkeypatch.setattr(flash_cli, "select_board", _select_board)
+    monkeypatch.setattr(flash_cli, "ensure_core_installed", lambda fqbn: None)
 
     calls: list[list[str]] = []
 
@@ -69,7 +69,7 @@ def test_flash_firmware_dry_run_emits_rendered_sketch(monkeypatch: pytest.Monkey
         calls.append(cmd)
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
-    monkeypatch.setattr(flexitac.flash, "_run_command", _run_command)
+    monkeypatch.setattr(flash_cli, "_run_command", _run_command)
 
     result = flash_firmware(
         profile_name="16x32",
@@ -111,10 +111,10 @@ def test_flash_firmware_dry_run_emits_rendered_sketch(monkeypatch: pytest.Monkey
 
 
 def test_flash_firmware_requires_installed_core(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(flexitac.flash, "list_installed_cores", lambda: {"arduino:samd"})
+    monkeypatch.setattr(flash_cli, "list_installed_cores", lambda: {"arduino:samd"})
 
     with pytest.raises(FlashError):
-        flexitac.flash.ensure_core_installed("arduino:avr:uno")
+        flash_cli.ensure_core_installed("arduino:avr:uno")
 
 
 def test_parse_detected_ports_text_handles_unknown_rows() -> None:
@@ -124,7 +124,7 @@ def test_parse_detected_ports_text_handles_unknown_rows() -> None:
         "/dev/ttyUSB0 serial   Serial Port (USB) Unknown\n"
     )
 
-    parsed = flexitac.flash._parse_detected_ports_text(payload)
+    parsed = flash_cli._parse_detected_ports_text(payload)
     ports = {item.port for item in parsed}
 
     assert "/dev/ttyACM0" in ports
