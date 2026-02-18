@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import argparse
 
-from flexitac.flash import SUPPORTED_AVR_FQBNS, ensure_arduino_cli_available, list_boards, list_installed_cores
+from flexitac.flash import (
+    SUPPORTED_AVR_FQBNS,
+    BoardCandidate,
+    ensure_arduino_cli_available,
+    list_detected_ports,
+    list_installed_cores,
+)
 from flexitac.logging_utils import configure_logging
 
 
@@ -34,10 +40,16 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
-        boards = list_boards(verbose=args.verbose)
+        detected_ports = list_detected_ports(verbose=args.verbose)
     except Exception as exc:  # noqa: BLE001
-        logger.error("failed to list boards: %s", exc)
+        logger.error("failed to list serial ports: %s", exc)
         return 2
+
+    boards = [
+        BoardCandidate(port=port.port, fqbn=port.fqbn, name=port.name)
+        for port in detected_ports
+        if port.fqbn is not None
+    ]
 
     try:
         installed_cores = list_installed_cores()
@@ -53,8 +65,19 @@ def main(argv: list[str] | None = None) -> int:
         logger.warning("no installed cores detected by arduino-cli")
 
     if not boards:
-        logger.warning("no boards detected")
-        logger.info("Connect your board and rerun this command.")
+        raw_ports = sorted({port.port for port in detected_ports})
+        if raw_ports:
+            logger.warning("serial ports were detected, but board type is unknown (no FQBN identified)")
+            for port in raw_ports:
+                logger.info("detected serial port: %s", port)
+            logger.info("This usually means missing board cores or unsupported hardware.")
+            logger.info("Try:")
+            logger.info("  arduino-cli core update-index")
+            logger.info("  arduino-cli core install arduino:avr")
+            logger.info("Then rerun this scan command.")
+        else:
+            logger.warning("no serial ports detected")
+            logger.info("Connect your board and rerun this command.")
         logger.info("If detection still fails, try an explicit flash command:")
         logger.info("  uv run python -m flexitac.flash --profile 16x32 --fqbn arduino:avr:uno --port /dev/ttyUSB0")
         return 1

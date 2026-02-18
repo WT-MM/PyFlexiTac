@@ -34,6 +34,15 @@ class BoardCandidate:
 
 
 @dataclass(frozen=True)
+class DetectedPort:
+    """Detected serial port with optional board identification."""
+
+    port: str
+    fqbn: str | None
+    name: str
+
+
+@dataclass(frozen=True)
 class FlashResult:
     """Result metadata from a flash run."""
 
@@ -313,12 +322,26 @@ def select_board(*, port: str | None, fqbn: str | None, expert: bool, verbose: b
         return candidate.port, candidate.fqbn
 
     if not filtered:
+        detected_ports = list_detected_ports(verbose=verbose)
+        known_ports = sorted({port.port for port in detected_ports})
         if candidates:
             available = "\n".join(f"  - {item.port} ({item.fqbn})" for item in candidates)
             msg = (
                 "no matching board found after applying filters. "
                 "Specify --port and --fqbn explicitly. Available detected boards:\n"
                 f"{available}\n{_board_scan_hint()}"
+            )
+            raise FlashError(msg)
+        if known_ports:
+            ports_text = "\n".join(f"  - {port}" for port in known_ports)
+            msg = (
+                "serial ports were detected but no board FQBNs were identified. "
+                "This is usually caused by missing board cores or unsupported hardware.\n"
+                f"Detected serial ports:\n{ports_text}\n"
+                "Try installing an AVR core, for example:\n"
+                "  arduino-cli core update-index\n"
+                "  arduino-cli core install arduino:avr\n"
+                f"{_board_scan_hint()}"
             )
             raise FlashError(msg)
         msg = (
@@ -337,18 +360,24 @@ def select_board(*, port: str | None, fqbn: str | None, expert: bool, verbose: b
 
 def list_boards(*, verbose: bool) -> list[BoardCandidate]:
     """Detect connected boards, preferring JSON output when available."""
-    if _supports_board_list_json(verbose=verbose):
-        result = _run_command(
-            ["arduino-cli", "board", "list", "--format", "json"],
-            verbose=verbose,
-            capture_output=True,
-            check=False,
-        )
+    detected_ports = list_detected_ports(verbose=verbose)
+    candidates = [
+        BoardCandidate(port=port.port, fqbn=port.fqbn, name=port.name)
+        for port in detected_ports
+        if port.fqbn is not None
+    ]
+    return _dedupe_candidates(candidates)
+
+
+def list_detected_ports(*, verbose: bool) -> list[DetectedPort]:
+    """Return all detected serial ports, including unknown board entries."""
+    json_cmd = _board_list_json_command(verbose=verbose)
+    if json_cmd is not None:
+        result = _run_command(json_cmd, verbose=verbose, capture_output=True, check=False)
         if result.returncode == 0:
             try:
                 payload = json.loads(result.stdout)
-                candidates = _parse_board_list_json(payload)
-                return _dedupe_candidates(candidates)
+                return _dedupe_detected_ports(_parse_detected_ports_json(payload))
             except json.JSONDecodeError:
                 if verbose:
                     LOGGER.warning("failed to parse JSON board list; falling back to text mode")
@@ -359,7 +388,7 @@ def list_boards(*, verbose: bool) -> list[BoardCandidate]:
         msg = f"failed to list boards: {stderr}"
         raise FlashError(msg)
 
-    return _dedupe_candidates(_parse_board_list_text(text_result.stdout))
+    return _dedupe_detected_ports(_parse_detected_ports_text(text_result.stdout))
 
 
 def ensure_core_installed(fqbn: str) -> None:
@@ -377,17 +406,17 @@ def ensure_core_installed(fqbn: str) -> None:
 
 def list_installed_cores() -> set[str]:
     """Return installed arduino-cli core IDs."""
-    result = _run_command(
-        ["arduino-cli", "core", "list", "--format", "json"], verbose=False, capture_output=True, check=False
-    )
-    if result.returncode == 0:
-        try:
-            payload = json.loads(result.stdout)
-            cores = _extract_cores_json(payload)
-            if cores:
-                return cores
-        except json.JSONDecodeError:
-            pass
+    json_cmd = _core_list_json_command()
+    if json_cmd is not None:
+        result = _run_command(json_cmd, verbose=False, capture_output=True, check=False)
+        if result.returncode == 0:
+            try:
+                payload = json.loads(result.stdout)
+                cores = _extract_cores_json(payload)
+                if cores:
+                    return cores
+            except json.JSONDecodeError:
+                pass
 
     fallback = _run_command(["arduino-cli", "core", "list"], verbose=False, capture_output=True, check=False)
     if fallback.returncode != 0:
@@ -533,19 +562,40 @@ def _run_command(
     return result
 
 
-def _supports_board_list_json(*, verbose: bool) -> bool:
+def _board_list_json_command(*, verbose: bool) -> list[str] | None:
+    """Return the best board-list JSON command for the installed arduino-cli."""
     help_result = _run_command(
         ["arduino-cli", "board", "list", "--help"],
         verbose=verbose,
         capture_output=True,
         check=False,
     )
-    text = f"{help_result.stdout}\n{help_result.stderr}"
-    return "--format" in text
+    help_text = f"{help_result.stdout}\n{help_result.stderr}"
+    if "--format" in help_text:
+        return ["arduino-cli", "board", "list", "--format", "json"]
+    if "--json" in help_text:
+        return ["arduino-cli", "board", "list", "--json"]
+    return None
 
 
-def _parse_board_list_json(payload: object) -> list[BoardCandidate]:
-    candidates: list[BoardCandidate] = []
+def _core_list_json_command() -> list[str] | None:
+    """Return the best core-list JSON command for the installed arduino-cli."""
+    help_result = _run_command(
+        ["arduino-cli", "core", "list", "--help"],
+        verbose=False,
+        capture_output=True,
+        check=False,
+    )
+    help_text = f"{help_result.stdout}\n{help_result.stderr}"
+    if "--format" in help_text:
+        return ["arduino-cli", "core", "list", "--format", "json"]
+    if "--json" in help_text:
+        return ["arduino-cli", "core", "list", "--json"]
+    return None
+
+
+def _parse_detected_ports_json(payload: object) -> list[DetectedPort]:
+    ports: list[DetectedPort] = []
 
     entries: list[dict[str, object]] = []
     if isinstance(payload, dict):
@@ -584,17 +634,19 @@ def _parse_board_list_json(payload: object) -> list[BoardCandidate]:
                     continue
                 name_obj = board_item.get("name")
                 name = name_obj if isinstance(name_obj, str) and name_obj else "Unknown"
-                candidates.append(BoardCandidate(port=address, fqbn=fqbn_obj, name=name))
+                ports.append(DetectedPort(port=address, fqbn=fqbn_obj, name=name))
         else:
             fallback_fqbn = entry.get("fqbn")
             if isinstance(fallback_fqbn, str) and fallback_fqbn:
-                candidates.append(BoardCandidate(port=address, fqbn=fallback_fqbn, name="Unknown"))
+                ports.append(DetectedPort(port=address, fqbn=fallback_fqbn, name="Unknown"))
+            else:
+                ports.append(DetectedPort(port=address, fqbn=None, name="Unknown"))
 
-    return candidates
+    return ports
 
 
-def _parse_board_list_text(payload: str) -> list[BoardCandidate]:
-    candidates: list[BoardCandidate] = []
+def _parse_detected_ports_text(payload: str) -> list[DetectedPort]:
+    ports: list[DetectedPort] = []
 
     for line in payload.splitlines():
         stripped = line.strip()
@@ -608,15 +660,16 @@ def _parse_board_list_text(payload: str) -> list[BoardCandidate]:
             continue
 
         fqbn_match = FQBN_RE.search(stripped)
-        if fqbn_match is None:
-            continue
+        fqbn = fqbn_match.group(0) if fqbn_match is not None else None
+        name = "Unknown"
+        if "Unknown" not in stripped and fqbn is not None:
+            assert fqbn_match is not None
+            suffix = stripped[fqbn_match.end() :].strip()
+            if suffix:
+                name = suffix
+        ports.append(DetectedPort(port=port, fqbn=fqbn, name=name))
 
-        fqbn = fqbn_match.group(0)
-        suffix = stripped[fqbn_match.end() :].strip()
-        name = suffix if suffix else "Unknown"
-        candidates.append(BoardCandidate(port=port, fqbn=fqbn, name=name))
-
-    return candidates
+    return ports
 
 
 def _extract_cores_json(payload: object) -> set[str]:
@@ -655,6 +708,20 @@ def _dedupe_candidates(candidates: list[BoardCandidate]) -> list[BoardCandidate]
             continue
         seen.add(key)
         deduped.append(candidate)
+
+    return deduped
+
+
+def _dedupe_detected_ports(ports: list[DetectedPort]) -> list[DetectedPort]:
+    seen: set[tuple[str, str]] = set()
+    deduped: list[DetectedPort] = []
+
+    for port in ports:
+        key = (port.port, port.fqbn or "")
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(port)
 
     return deduped
 

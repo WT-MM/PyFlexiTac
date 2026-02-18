@@ -115,3 +115,18 @@ def test_flash_firmware_requires_installed_core(monkeypatch: pytest.MonkeyPatch)
 
     with pytest.raises(FlashError):
         flexitac.flash.ensure_core_installed("arduino:avr:uno")
+
+
+def test_parse_detected_ports_text_handles_unknown_rows() -> None:
+    payload = (
+        "Port         Protocol Type              Board Name FQBN Core\n"
+        "/dev/ttyACM0 serial   Serial Port (USB) Unknown\n"
+        "/dev/ttyUSB0 serial   Serial Port (USB) Unknown\n"
+    )
+
+    parsed = flexitac.flash._parse_detected_ports_text(payload)
+    ports = {item.port for item in parsed}
+
+    assert "/dev/ttyACM0" in ports
+    assert "/dev/ttyUSB0" in ports
+    assert all(item.fqbn is None for item in parsed)

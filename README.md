@@ -1,7 +1,7 @@
 # flexitac
 
 `flexitac` is a Python package for interacting with FlexiTac tactile sensors and flashing firmware via `arduino-cli`.
-CLI output uses colorized logging (via `colorlog`) when available.
+CLI output uses colorized logging (via `colorlogging`) when available.
 
 ## Install
 
@@ -50,6 +50,46 @@ The flash command generates a configured `.ino` sketch from a template and uploa
 ### Prerequisite
 
 Install `arduino-cli` and required board core(s). If a core is missing, `flexitac` prints the exact install command.
+
+#### First-time `arduino-cli` setup
+
+1. Install `arduino-cli` (official options: Homebrew or install script):  
+   https://arduino.github.io/arduino-cli/latest/installation/
+
+   Example via Homebrew (macOS/Linux):
+
+   ```bash
+   brew update
+   brew install arduino-cli
+   ```
+
+2. Confirm it is installed:
+
+   ```bash
+   arduino-cli version
+   ```
+
+3. Initialize/update core index:
+
+   ```bash
+   arduino-cli core update-index
+   ```
+
+4. Install the default AVR core used by FlexiTac profiles:
+
+   ```bash
+   arduino-cli core install arduino:avr
+   ```
+
+5. Verify core installation and board visibility:
+
+   ```bash
+   arduino-cli core list
+   arduino-cli board list
+   uv run python -m flexitac.scan --verbose
+   ```
+
+If `arduino-cli board list` shows ports as `Unknown`, that usually means board cores are missing or board detection failed. You can still flash by passing explicit `--port` and `--fqbn`.
 
 ### Quick Start
 
