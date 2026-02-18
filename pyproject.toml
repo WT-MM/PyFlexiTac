@@ -30,6 +30,10 @@ dev = [
 examples = [
     "matplotlib",
 ]
+all = [
+    "flexitac[dev]",
+    "flexitac[examples]",
+]
 
 [build-system]
 requires = ["setuptools", "wheel"]
