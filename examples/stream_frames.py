@@ -22,9 +22,9 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    started = time.monotonic()
     with FlexiTacSensor(args.port, rows=args.rows, cols=args.cols, baud=args.baud) as sensor:
         sensor.calibrate()
+        started = time.monotonic()
         if args.per_row:
             assert sensor.baseline is not None
             print("baseline per row:", [round(float(v), 1) for v in sensor.baseline.mean(axis=1)])

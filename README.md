@@ -1,7 +1,7 @@
 # flexitac
 
-Python interface for [FlexiTac](https://flexitac.github.io/) tactile sensors:
-flash Arduino firmware, then read framed sensor data over serial.
+Python interface for [FlexiTac](https://flexitac.github.io/) tactile sensors.
+Allows you to easily [flash](#flexitac-flash) Arduino firmware and read framed sensor data over serial.
 
 Defaults target the standard FlexiTac 12x32 sensor (12 rows wired to mux
 channels 4-15). Override `--rows`, `--cols`, and `--mux-offset` for variants.
@@ -49,12 +49,23 @@ uv run flexitac-stream  --port /dev/ttyUSB0
 uv run flexitac-heatmap --port /dev/ttyUSB0
 ```
 
+### `flexitac-find-port`
+
+Not sure which `/dev/tty*` your sensor is on? Run:
+
+```bash
+flexitac-find-port
+```
+
+It snapshots ports, asks you to unplug the sensor, then reports whichever port
+disappeared.
+
 ### `flexitac-stream`
 
 Stream frames and print FPS / signal stats:
 
 ```bash
-flexitac-stream --port /dev/ttyUSB0 --frames 30
+flexitac-stream --port /dev/ttyUSB0 --frames 3000
 ```
 
 ```
@@ -80,17 +91,6 @@ flexitac-heatmap --port /dev/ttyUSB0
 ```
 
 Press the sensor pad -- bright spots should track your touch.
-
-### `flexitac-find-port`
-
-Not sure which `/dev/tty*` your sensor is on? Run:
-
-```bash
-flexitac-find-port
-```
-
-It snapshots ports, asks you to unplug the sensor, then reports whichever port
-disappeared.
 
 ### `flexitac-flash`
 
