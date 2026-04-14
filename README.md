@@ -52,7 +52,11 @@ Requires [`arduino-cli`](https://arduino.github.io/arduino-cli/latest/installati
 First-time setup:
 
 ```bash
-brew install arduino-cli              # or use the upstream install script
+brew install arduino-cli            
+# or use the upstream install script:
+curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
+
+# then install the Arduino AVR core
 arduino-cli core update-index
 arduino-cli core install arduino:avr  # AVR core for Uno/Nano/Mega/etc.
 ```
