@@ -1,189 +1,117 @@
 # flexitac
 
-`flexitac` is a Python package for interacting with FlexiTac tactile sensors and flashing firmware via `arduino-cli`.
-CLI output uses colorized logging (via `colorlogging`) when available.
+Python interface for [FlexiTac](https://flexitac.github.io/) tactile sensors:
+flash Arduino firmware, then read framed sensor data over serial.
+
+Defaults target the standard FlexiTac 12×32 sensor (12 rows wired to mux
+channels 4-15). Override `--rows`, `--cols`, and `--mux-offset` for variants.
 
 ## Install
 
 ```bash
-pip install flexitac
+uv sync --extra dev
+# or: pip install -e '.[dev]'
 ```
 
-For development in this repo:
-
-```bash
-pip install -e '.[dev]'
-```
-
-## Runtime API
-
-The runtime expects the binary framed protocol:
-- frame marker: `0xAA 0x55`
-- payload: `rows * cols` bytes
-
-Example:
+## Reading frames
 
 ```python
 from flexitac import FlexiTacSensor
 
-with FlexiTacSensor(port="/dev/ttyUSB0", rows=16, cols=32) as sensor:
-    frame = sensor.read_frame()
-    print(frame.raw.shape)          # (16, 32)
-    print(frame.normalized.max())
+with FlexiTacSensor("/dev/ttyUSB0") as sensor:  # rows=12, cols=32 by default
+    for frame in sensor:
+        print(frame.normalized.shape, frame.normalized.max())
 ```
 
-Streaming:
-
-```python
-from flexitac import FlexiTacSensor
-
-sensor = FlexiTacSensor(port="/dev/ttyUSB0")
-for frame in sensor.iter_frames(limit=10):
-    print(frame.seq, frame.timestamp_s)
-sensor.close()
-```
-
-## Examples
-
-The repo includes runnable examples in `/examples`.
-
-Install visualization extras if needed:
-
-```bash
-pip install "flexitac[examples]"
-```
-
-### 1) Stream frames + print metrics
-
-```bash
-python examples/stream_frames.py --port /dev/ttyUSB0 --rows 16 --cols 32
-```
-
-### 2) Live heatmap visualization
-
-```bash
-python examples/visualize_heatmap.py --port /dev/ttyUSB0 --rows 16 --cols 32
-```
-
-Both scripts accept `--help` for full argument lists.
-
-## Flashing Firmware
-
-The flash command generates a configured `.ino` sketch from a template and uploads it with `arduino-cli`.
-CLI implementation modules live in `/flexitac/scripts` (with backward-compatible shims at `flexitac.flash` and `flexitac.scan`).
-
-### Prerequisite
-
-Install `arduino-cli` and required board core(s). If a core is missing, `flexitac` prints the exact install command.
-
-#### First-time `arduino-cli` setup
-
-1. Install `arduino-cli` (official options: Homebrew or install script):  
-   https://arduino.github.io/arduino-cli/latest/installation/
-
-   Example via Homebrew (macOS/Linux):
-
-   ```bash
-   brew update
-   brew install arduino-cli
-   ```
-
-2. Confirm it is installed:
-
-   ```bash
-   arduino-cli version
-   ```
-
-3. Initialize/update core index:
-
-   ```bash
-   arduino-cli core update-index
-   ```
-
-4. Install the default AVR core used by FlexiTac profiles:
-
-   ```bash
-   arduino-cli core install arduino:avr
-   ```
-
-5. Verify core installation and board visibility:
-
-   ```bash
-   arduino-cli core list
-   arduino-cli board list
-   uv run python -m flexitac.scan --verbose
-   ```
-
-If `arduino-cli board list` shows ports as `Unknown`, that usually means board cores are missing or board detection failed. You can still flash by passing explicit `--port` and `--fqbn`.
-
-### Quick Start
-
-```bash
-python -m flexitac.flash --profile 16x32
-```
-
-The command attempts to auto-detect board + port, restricted to supported AVR targets by default.
-
-### Helpful Flags
-
-```bash
-python -m flexitac.flash --list-profiles
-python -m flexitac.flash --list-boards
-python -m flexitac.flash --profile 16x16 --dry-run --verbose
-python -m flexitac.flash --profile 16x32 --print-config
-```
-
-### Scan and Diagnose Board Detection
-
-Use the dedicated scanner when auto-detection fails:
-
-```bash
-uv run python -m flexitac.scan --verbose
-```
-
-Or with the installed console script:
-
-```bash
-flexitac-scan --verbose
-```
-
-### Explicit Board/Port
-
-```bash
-python -m flexitac.flash --profile 16x32 --fqbn arduino:avr:uno --port /dev/ttyUSB0
-```
-
-### Programmatic Firmware Variable Overrides
-
-Layering order:
-1. profile defaults
-2. first-class flags (`--rows`, `--cols`, `--baud`, pin flags)
-3. repeated `--set NAME=VALUE`
+`sensor.read()` returns a `FlexiTacFrame(seq, timestamp_s, raw, normalized)`.
+The first read auto-calibrates by collecting `init_frames` (default 30) and
+storing the per-pixel median as the baseline. Call `sensor.calibrate()` to
+recalibrate.
 
 Examples:
 
 ```bash
-python -m flexitac.flash --profile 16x32 --rows 16 --cols 24 --baud 1000000
-python -m flexitac.flash --profile 16x32 --set ROWS_PER_MUX=8 --set MUX_COUNT=2
+python examples/stream_frames.py --port /dev/ttyUSB0
+python examples/visualize_heatmap.py --port /dev/ttyUSB0   # needs matplotlib
 ```
 
-By default, `--set` is allowlisted for safety. Use `--expert` to bypass restrictions.
+## Finding the port
 
-### Emit Generated Sketch
+Not sure which `/dev/tty*` your sensor is on? Run:
 
 ```bash
-python -m flexitac.flash --profile 16x32 --emit-sketch /tmp/flexitac_generated.ino --dry-run
+flexitac-find-port
 ```
 
-This writes the exact rendered `.ino` used for compile/upload.
+It snapshots ports, asks you to unplug the sensor, then reports whichever port
+disappeared.
 
-## Supported Defaults
+## Flashing firmware
 
-Default flashing target allowlist:
-- `arduino:avr:uno`
-- `arduino:avr:nano`
-- `arduino:avr:mega`
-- `arduino:avr:leonardo`
-- `arduino:avr:micro`
+Requires [`arduino-cli`](https://arduino.github.io/arduino-cli/latest/installation/).
+First-time setup:
 
-Use `--expert` to target non-default boards.
+```bash
+brew install arduino-cli              # or use the upstream install script
+arduino-cli core update-index
+arduino-cli core install arduino:avr  # AVR core for Uno/Nano/Mega/etc.
+```
+
+```bash
+# auto-detects the port + FQBN if exactly one Arduino is plugged in
+flexitac-flash
+
+# override geometry / wiring for non-standard sensors
+flexitac-flash --rows 16 --cols 32 --mux-offset 0
+```
+
+Defaults: `rows=12`, `cols=32`, `baud=2000000`, `mux-offset=4` (standard
+FlexiTac 12×32 sensor wired to mux channels 4-15). The firmware is generated
+from `flexitac/firmware/template.ino` by substituting `ROW_COUNT`,
+`COLUMN_COUNT`, `BAUD_RATE`, and `MUX_CHANNEL_OFFSET`. To customize pin
+assignments, edit the template directly.
+
+## Verify the flash worked
+
+After flashing, stream a few frames and confirm sane values:
+
+```bash
+python examples/stream_frames.py --port /dev/ttyUSB0 --frames 30
+```
+
+You should see steady output like:
+
+```
+frame=    10 fps=  85.3 raw_max=104 norm_max=0.000
+frame=    20 fps=  87.1 raw_max=109 norm_max=0.123
+```
+
+What to check:
+
+- **`fps`** stabilizes near your expected rate (~100+ fps for a 12×32 sensor
+  at 2 Mbps). If it's 0 or you get `TimeoutError`, the firmware isn't sending
+  framed data — confirm `--rows`/`--cols`/`--baud` match what you flashed.
+- **`raw_max`** is in `[0, 255]` and changes when you press the sensor.
+  A flat 0 or flat 255 indicates a wiring issue, not a flashing issue.
+- **`norm_max`** rises toward 1.0 under contact and stays near 0 at rest.
+
+For a visual check:
+
+```bash
+python examples/visualize_heatmap.py --port /dev/ttyUSB0
+```
+
+Press the sensor pad — bright spots should track your touch.
+
+## Wire protocol
+
+Each frame: marker `0xAA 0x55` followed by `rows * cols` uint8 ADC samples,
+streamed continuously at the configured baud rate.
+
+## Development
+
+```bash
+make format         # ruff format + autofix
+make static-checks  # ruff + mypy
+make test           # pytest
+```

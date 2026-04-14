@@ -1,5 +1,5 @@
 #define BAUD_RATE                 2000000
-#define ROW_COUNT                 16
+#define ROW_COUNT                 12
 #define COLUMN_COUNT              32
 
 #define PIN_ADC_INPUT             A0
@@ -23,6 +23,7 @@
 #define ROWS_PER_MUX              16
 #define MUX_COUNT                 1
 #define CHANNEL_PINS_PER_MUX      4
+#define MUX_CHANNEL_OFFSET        4
 
 #ifndef cbi
 #define cbi(sfr, bit) (_SFR_BYTE(sfr) &= ~_BV(bit))
@@ -86,9 +87,10 @@ void setRow(int row_number)
     digitalWrite(PIN_MUX_INHIBIT_0 + current_enabled_mux, LOW);
   }
 
+  int mux_channel = row_number + MUX_CHANNEL_OFFSET;
   for (int i = 0; i < CHANNEL_PINS_PER_MUX; i++)
   {
-    if (bitRead(row_number, i))
+    if (bitRead(mux_channel, i))
     {
       digitalWrite(PIN_MUX_CHANNEL_0 + i, HIGH);
     }

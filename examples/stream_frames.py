@@ -1,67 +1,45 @@
-"""Read FlexiTac frames and print streaming statistics."""
+"""Stream FlexiTac frames and print FPS / signal stats."""
 
 from __future__ import annotations
 
 import argparse
 import time
 
-from flexitac import FlexiTacSensor, ProcessingConfig
-
-
-def build_parser() -> argparse.ArgumentParser:
-    """Build command-line arguments for frame streaming."""
-    parser = argparse.ArgumentParser(description="Read FlexiTac frames and print basic metrics.")
-    parser.add_argument("--port", required=True, help="Serial port (example: /dev/ttyUSB0)")
-    parser.add_argument("--baud", type=int, default=2_000_000, help="Serial baud rate")
-    parser.add_argument("--rows", type=int, default=16, help="Frame row count")
-    parser.add_argument("--cols", type=int, default=32, help="Frame column count")
-    parser.add_argument("--threshold", type=float, default=25.0, help="Processing threshold")
-    parser.add_argument("--noise-scale", type=float, default=30.0, help="Low-signal normalization scale")
-    parser.add_argument("--init-frames", type=int, default=30, help="Calibration frame count")
-    parser.add_argument("--frames", type=int, default=0, help="Number of frames to read (0 = run forever)")
-    parser.add_argument("--print-every", type=int, default=10, help="Print metrics every N frames")
-    parser.add_argument("--read-timeout-s", type=float, default=5.0, help="Timeout for each frame read")
-    return parser
+from flexitac import FlexiTacSensor
 
 
 def main() -> int:
-    """Run the frame streaming example."""
-    args = build_parser().parse_args()
-
-    processing = ProcessingConfig(
-        threshold=args.threshold,
-        noise_scale=args.noise_scale,
-        init_frames=args.init_frames,
+    parser = argparse.ArgumentParser(description="Stream FlexiTac frames.")
+    parser.add_argument("--port", required=True)
+    parser.add_argument("--rows", type=int, default=12)
+    parser.add_argument("--cols", type=int, default=32)
+    parser.add_argument("--baud", type=int, default=2_000_000)
+    parser.add_argument("--frames", type=int, default=0, help="0 = run forever")
+    parser.add_argument(
+        "--per-row",
+        action="store_true",
+        help="Print per-row raw mean / baseline (useful when some rows look dead)",
     )
+    args = parser.parse_args()
 
-    limit = args.frames if args.frames > 0 else None
     started = time.monotonic()
-
-    with FlexiTacSensor(
-        port=args.port,
-        baud=args.baud,
-        rows=args.rows,
-        cols=args.cols,
-        read_timeout_s=args.read_timeout_s,
-        processing=processing,
-    ) as sensor:
+    with FlexiTacSensor(args.port, rows=args.rows, cols=args.cols, baud=args.baud) as sensor:
         sensor.calibrate()
-        print("Calibration complete. Streaming frames...")
+        if args.per_row:
+            assert sensor.baseline is not None
+            print("baseline per row:", [round(float(v), 1) for v in sensor.baseline.mean(axis=1)])
 
-        for index, frame in enumerate(sensor.iter_frames(limit=limit), start=1):
-            if index % args.print_every != 0:
-                continue
-
-            elapsed = max(time.monotonic() - started, 1e-6)
-            fps = index / elapsed
-            raw_max = int(frame.raw.max())
-            norm_max = float(frame.normalized.max())
-            norm_mean = float(frame.normalized.mean())
+        for i, frame in enumerate(sensor, start=1):
+            fps = i / max(time.monotonic() - started, 1e-6)
             print(
-                f"frame={index:6d} seq={frame.seq:6d} fps={fps:7.2f} "
-                f"raw_max={raw_max:3d} norm_max={norm_max:0.3f} norm_mean={norm_mean:0.3f}"
+                f"frame={i:6d} fps={fps:6.1f} raw_max={int(frame.raw.max()):3d} "
+                f"norm_max={float(frame.normalized.max()):.3f}"
             )
-
+            if args.per_row and i % 20 == 0:
+                row_max = frame.raw.max(axis=1)
+                print("  raw_max per row:", [int(v) for v in row_max])
+            if args.frames and i >= args.frames:
+                break
     return 0
 
 

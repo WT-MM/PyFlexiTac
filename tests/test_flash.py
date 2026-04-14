@@ -1,132 +1,55 @@
-"""Tests for board selection and flash command behavior."""
+"""Tests for flash CLI helpers."""
 
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
 
 import pytest
 
-import flexitac.scripts.flash as flash_cli
-from flexitac.scripts.flash import BoardCandidate, FlashError, flash_firmware, select_board
+import flexitac.flash as flash_mod
+from flexitac.flash import FlashError, detect_board, render_template
 
 
-def test_select_board_uses_unique_detected_candidate(monkeypatch: pytest.MonkeyPatch) -> None:
-    candidates = [BoardCandidate(port="/dev/ttyUSB0", fqbn="arduino:avr:uno", name="Uno")]
-
-    def _list_boards(*, verbose: bool) -> list[BoardCandidate]:
-        del verbose
-        return candidates
-
-    monkeypatch.setattr(flash_cli, "list_boards", _list_boards)
-
-    port, fqbn = select_board(port=None, fqbn=None, expert=False, verbose=False)
-    assert port == "/dev/ttyUSB0"
-    assert fqbn == "arduino:avr:uno"
+def test_render_template_replaces_known_macros() -> None:
+    rendered = render_template(rows=8, cols=24, baud=1_000_000)
+    assert "#define ROW_COUNT                 8" in rendered
+    assert "#define COLUMN_COUNT              24" in rendered
+    assert "#define BAUD_RATE                 1000000" in rendered
 
 
-def test_select_board_rejects_ambiguous_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
-    candidates = [
-        BoardCandidate(port="/dev/ttyUSB0", fqbn="arduino:avr:uno", name="Uno"),
-        BoardCandidate(port="/dev/ttyUSB1", fqbn="arduino:avr:nano", name="Nano"),
-    ]
-
-    def _list_boards(*, verbose: bool) -> list[BoardCandidate]:
-        del verbose
-        return candidates
-
-    monkeypatch.setattr(flash_cli, "list_boards", _list_boards)
-
-    with pytest.raises(FlashError, match="flexitac.scan"):
-        select_board(port=None, fqbn=None, expert=False, verbose=False)
-
-
-def test_select_board_rejects_unsupported_fqbn_without_expert() -> None:
-    with pytest.raises(FlashError):
-        select_board(port="/dev/ttyUSB0", fqbn="esp32:esp32:esp32", expert=False, verbose=False)
-
-
-def test_flash_firmware_dry_run_emits_rendered_sketch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    emitted = tmp_path / "generated.ino"
-
-    def _select_board(*, port: str | None, fqbn: str | None, expert: bool, verbose: bool) -> tuple[str, str]:
-        del port, fqbn, expert, verbose
-        return "/dev/ttyUSB0", "arduino:avr:uno"
-
-    monkeypatch.setattr(flash_cli, "select_board", _select_board)
-    monkeypatch.setattr(flash_cli, "ensure_core_installed", lambda fqbn: None)
-
-    calls: list[list[str]] = []
-
-    def _run_command(
-        cmd: list[str],
-        *,
-        verbose: bool,
-        capture_output: bool = True,
-        check: bool = True,
-    ) -> subprocess.CompletedProcess[str]:
-        del verbose, check
-        calls.append(cmd)
-        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(flash_cli, "_run_command", _run_command)
-
-    result = flash_firmware(
-        profile_name="16x32",
-        port=None,
-        fqbn=None,
-        board_options=["cpu=atmega328p"],
-        rows=16,
-        cols=24,
-        baud=1_000_000,
-        pin_adc_input=None,
-        pin_shift_register_data=None,
-        pin_shift_register_clock=None,
-        pin_mux_channel_0=None,
-        pin_mux_channel_1=None,
-        pin_mux_channel_2=None,
-        pin_mux_channel_3=None,
-        pin_mux_inhibit_0=None,
-        pin_mux_inhibit_1=None,
-        set_overrides=["ROWS_PER_MUX=8", "MUX_COUNT=2"],
-        print_config=False,
-        emit_sketch=str(emitted),
-        dry_run=True,
-        expert=False,
-        verbose=False,
-    )
-
-    assert result.dry_run is True
-    assert result.port == "/dev/ttyUSB0"
-    assert result.fqbn == "arduino:avr:uno"
-    assert "--board-options cpu=atmega328p" in result.compile_command
-    assert emitted.exists()
-
-    content = emitted.read_text(encoding="utf-8")
-    assert "#define COLUMN_COUNT              24" in content
-    assert "#define BAUD_RATE                 1000000" in content
-    assert "#define ROWS_PER_MUX              8" in content
-    assert "#define MUX_COUNT                 2" in content
-    assert calls == []
-
-
-def test_flash_firmware_requires_installed_core(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(flash_cli, "list_installed_cores", lambda: {"arduino:samd"})
-
-    with pytest.raises(FlashError):
-        flash_cli.ensure_core_installed("arduino:avr:uno")
-
-
-def test_parse_detected_ports_text_handles_unknown_rows() -> None:
+def test_detect_board_picks_unique_match(monkeypatch: pytest.MonkeyPatch) -> None:
     payload = (
-        "Port         Protocol Type              Board Name FQBN Core\n"
-        "/dev/ttyACM0 serial   Serial Port (USB) Unknown\n"
-        "/dev/ttyUSB0 serial   Serial Port (USB) Unknown\n"
+        "Port         Protocol Type              Board Name FQBN              Core\n"
+        "/dev/ttyUSB0 serial   Serial Port (USB) Arduino Uno arduino:avr:uno   arduino:avr\n"
     )
+    monkeypatch.setattr(
+        flash_mod,
+        "_run",
+        lambda cmd, **_: subprocess.CompletedProcess(cmd, 0, stdout=payload, stderr=""),
+    )
+    assert detect_board() == ("/dev/ttyUSB0", "arduino:avr:uno")
 
-    parsed = flash_cli._parse_detected_ports_text(payload)
-    ports = {item.port for item in parsed}
 
-    assert "/dev/ttyACM0" in ports
-    assert "/dev/ttyUSB0" in ports
-    assert all(item.fqbn is None for item in parsed)
+def test_detect_board_errors_on_no_boards(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        flash_mod,
+        "_run",
+        lambda cmd, **_: subprocess.CompletedProcess(cmd, 0, stdout="Port Protocol\n", stderr=""),
+    )
+    with pytest.raises(FlashError, match="no Arduino"):
+        detect_board()
+
+
+def test_detect_board_errors_on_multiple(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = (
+        "Port         Protocol Type FQBN              Core\n"
+        "/dev/ttyUSB0 serial   USB  arduino:avr:uno   arduino:avr\n"
+        "/dev/ttyUSB1 serial   USB  arduino:avr:nano  arduino:avr\n"
+    )
+    monkeypatch.setattr(
+        flash_mod,
+        "_run",
+        lambda cmd, **_: subprocess.CompletedProcess(cmd, 0, stdout=payload, stderr=""),
+    )
+    with pytest.raises(FlashError, match="multiple"):
+        detect_board()
