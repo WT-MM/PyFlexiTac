@@ -50,7 +50,7 @@ format:
 static-checks:
 	@uv run ruff format --check $(py-files)
 	@uv run ruff check $(py-files)
-	@uv run mypy --install-types --non-interactive $(py-files)
+	@uv run mypy $(py-files)
 .PHONY: static-checks
 
 # ------------------------ #
