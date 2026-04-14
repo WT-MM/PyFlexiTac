@@ -23,31 +23,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
 
       - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-
-      - name: Restore cache
-        id: restore-cache
-        uses: actions/cache/restore@v3
-        with:
-          path: |
-            ${{ env.pythonLocation }}
-            .mypy_cache/
-          key: python-requirements-${{ env.pythonLocation }}-${{ github.event.pull_request.base.sha || github.sha }}
-          restore-keys: |
-            python-requirements-${{ env.pythonLocation }}
-            python-requirements-
+        run: uv python install 3.11
 
       - name: Install package
-        run: |
-          uv sync --extra dev
+        run: uv sync --extra dev
 
       - name: Run static checks
         run: |
@@ -55,14 +42,4 @@ jobs:
           make static-checks
 
       - name: Run unit tests
-        run: |
-          make test
-
-      - name: Save cache
-        uses: actions/cache/save@v3
-        if: github.ref == 'refs/heads/master'
-        with:
-          path: |
-            ${{ env.pythonLocation }}
-            .mypy_cache/
-          key: ${{ steps.restore-cache.outputs.cache-primary-key }}
+        run: make test

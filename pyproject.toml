@@ -22,6 +22,8 @@ Repository = "https://github.com/WT-MM/PyFlexiTac.git"
 
 flexitac-flash = "flexitac.flash:main"
 flexitac-find-port = "flexitac.find_port:main"
+flexitac-stream = "examples.stream_frames:main"
+flexitac-heatmap = "examples.visualize_heatmap:main"
 
 [project.optional-dependencies]
 
@@ -51,7 +53,7 @@ include-package-data = true
 [tool.setuptools.packages.find]
 
 where = ["."]
-include = ["flexitac*"]
+include = ["flexitac*", "examples*"]
 
 [tool.setuptools.package-data]
 
