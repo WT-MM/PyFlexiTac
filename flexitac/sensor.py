@@ -40,7 +40,27 @@ class FlexiTacSensor:
         noise_scale: float = 30.0,
         init_frames: int = 30,
         read_timeout_s: float = 5.0,
+        baseline: NDArray[np.float32] | float | None = None,
     ) -> None:
+        """Initialize a FlexiTac sensor.
+
+        Args:
+            port: Serial device path (e.g. ``/dev/ttyUSB0``).
+            rows: Number of tactile rows (default 12).
+            cols: Number of tactile columns (default 32).
+            baud: Serial baud rate matching the flashed firmware (default 2_000_000).
+            threshold: Contact-detection threshold in ADC counts above baseline.
+            noise_scale: Divisor used to normalize readings below ``threshold``.
+            init_frames: Number of frames sampled during ``calibrate()`` (default 30).
+                Higher values give a more robust baseline at the cost of startup time.
+            read_timeout_s: Maximum time ``read()`` will wait for a full frame.
+            baseline: If provided, skips auto-calibration on first ``read()``. Pass a
+                ``(rows, cols)`` array of per-pixel baselines, or a scalar applied to
+                every pixel. Typical resting ADC values land around 10-40 for an
+                unloaded sensor, so a scalar like ``20.0`` is a reasonable default
+                when you can't afford the startup delay of a full calibration. For
+                accurate contact detection, prefer letting ``calibrate()`` run.
+        """
         self.port = port
         self.rows = rows
         self.cols = cols
@@ -55,6 +75,9 @@ class FlexiTacSensor:
         self._buf = bytearray()
         self._baseline: NDArray[np.float32] | None = None
         self._seq = 0
+
+        if baseline is not None:
+            self._baseline = np.broadcast_to(np.float32(baseline), (rows, cols)).astype(np.float32).copy()
 
     def open(self) -> FlexiTacSensor:
         """Open the serial port if not already open."""
