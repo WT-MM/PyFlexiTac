@@ -6,6 +6,10 @@ Allows you to easily [flash](#flexitac-flash) Arduino firmware and read framed s
 Defaults target the standard FlexiTac 12x32 sensor (12 rows wired to mux
 channels 4-15). Override `--rows`, `--cols`, and `--mux-offset` for variants.
 
+Serial port permissions apply to both flashing and reading. If you hit
+`Permission denied` with either `flexitac-flash` or read tools like
+`flexitac-stream`/`flexitac-heatmap`, see the note in [`flexitac-flash`](#flexitac-flash).
+
 ## Install
 
 ```bash
@@ -117,6 +121,24 @@ flexitac-flash --rows 16 --cols 32 --mux-offset 0
 # if unable to autodetect, pass --port and --fqbn explicitly:
 flexitac-flash --port /dev/ttyUSB0 --fqbn arduino:avr:uno
 ```
+
+If flashing fails with a serial `Permission denied` error:
+
+- On Linux, add your user to the serial group, then re-login:
+
+  ```bash
+  sudo usermod -aG dialout "$USER"
+  ```
+
+- On macOS, permissions are usually managed automatically, but if needed you can
+  grant temporary read/write access to the device (replace with your actual port):
+
+  ```bash
+  sudo chmod a+rw /dev/tty.usbmodem*
+  ```
+
+As a last-resort fallback, you can run `sudo chmod 666 /dev/tty...`,
+but this is overly permissive.
 
 Defaults: `rows=12`, `cols=32`, `baud=2000000`, `mux-offset=4` (standard
 FlexiTac 12x32 sensor wired to mux channels 4-15). The firmware is generated
