@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: PyFlexiTac
+abstract: >-
+  Python runtime and flashing tools for FlexiTac tactile sensors.
+authors:
+  - family-names: Maa
+    given-names: Wesley
+repository-code: "https://github.com/WT-MM/PyFlexiTac"
+url: "https://github.com/WT-MM/PyFlexiTac"
+license: MIT
+version: 0.3.0
+keywords:
+  - tactile sensing
+  - FlexiTac
+  - robotics

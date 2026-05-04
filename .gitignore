@@ -26,3 +26,6 @@ out*/
 
 # Virtual environment
 .venv/
+
+# Claude
+.claude/

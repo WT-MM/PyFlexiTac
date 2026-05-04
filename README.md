@@ -160,3 +160,23 @@ make format         # ruff format + autofix
 make static-checks  # ruff + mypy
 make test           # pytest
 ```
+
+## Citation
+
+If you use this software in research or publications, please cite the repository.
+On GitHub, use **Cite this repository**.
+
+```bibtex
+@misc{maa_pyflexitac_2026,
+  author = {Maa, Wesley},
+  title = {{PyFlexiTac}: Python runtime and flashing tools for FlexiTac tactile sensors},
+  year = {2026},
+  howpublished = {\url{https://github.com/WT-MM/PyFlexiTac}},
+  note = {Version 0.3.0},
+}
+```
+
+## Acknowledgments
+
+- [Binghao Huang](https://binghao-huang.github.io/), for the Arduino firmware template this project's firmware is derived from.
+- [Naian Tao](https://tna001-ai.github.io/), for leading the [LeFlexiTac](https://tna001-ai.github.io/tactile-lerobot-website/) project that motivated this code.
