@@ -77,7 +77,7 @@ class FlexiTacSensor:
         self._seq = 0
 
         if baseline is not None:
-            self._baseline = np.broadcast_to(np.float32(baseline), (rows, cols)).astype(np.float32).copy()
+            self._baseline = np.broadcast_to(np.float32(baseline), (rows, cols)).copy()
 
     def open(self) -> FlexiTacSensor:
         """Open the serial port if not already open."""
@@ -149,15 +149,23 @@ class FlexiTacSensor:
 
     def _latest_buffered_frame(self) -> NDArray[np.uint8] | None:
         latest: NDArray[np.uint8] | None = None
-        while True:
-            idx = self._buf.find(MARKER)
-            if idx < 0 or len(self._buf) - idx - 2 < self._frame_bytes:
-                break
-            del self._buf[: idx + 2]
-            payload = bytes(self._buf[: self._frame_bytes])
-            del self._buf[: self._frame_bytes]
-            latest = np.frombuffer(payload, dtype=np.uint8).reshape(self.rows, self.cols).copy()
+        while (frame := self._pop_frame()) is not None:
+            latest = frame
         return latest
+
+    def _pop_frame(self) -> NDArray[np.uint8] | None:
+        """Extract one frame from ``self._buf``; trim leading garbage if no marker."""
+        idx = self._buf.find(MARKER)
+        if idx < 0:
+            if len(self._buf) > 1:
+                del self._buf[:-1]
+            return None
+        if len(self._buf) - idx - 2 < self._frame_bytes:
+            return None
+        del self._buf[: idx + 2]
+        payload = bytes(self._buf[: self._frame_bytes])
+        del self._buf[: self._frame_bytes]
+        return np.frombuffer(payload, dtype=np.uint8).reshape(self.rows, self.cols).copy()
 
     def _normalize(self, raw: NDArray[np.uint8]) -> NDArray[np.float32]:
         assert self._baseline is not None
@@ -181,18 +189,8 @@ class FlexiTacSensor:
                 if len(self._buf) > 50_000:
                     del self._buf[: len(self._buf) - 50_000]
 
-            idx = self._buf.find(MARKER)
-            if idx < 0:
-                if len(self._buf) > 1:
-                    del self._buf[:-1]
-                continue
-
-            if len(self._buf) - idx - 2 < self._frame_bytes:
-                continue
-
-            del self._buf[: idx + 2]
-            payload = bytes(self._buf[: self._frame_bytes])
-            del self._buf[: self._frame_bytes]
-            return np.frombuffer(payload, dtype=np.uint8).reshape(self.rows, self.cols).copy()
+            frame = self._pop_frame()
+            if frame is not None:
+                return frame
 
         raise TimeoutError(f"timed out after {self.read_timeout_s:.2f}s waiting for a frame")

@@ -1,4 +1,4 @@
-# flexitac
+# PyFlexiTac
 
 Python interface for [FlexiTac](https://flexitac.github.io/) tactile sensors.
 Allows you to easily [flash](#flexitac-flash) Arduino firmware and read framed sensor data over serial.
@@ -172,7 +172,7 @@ On GitHub, use **Cite this repository**.
   title = {{PyFlexiTac}: Python runtime and flashing tools for FlexiTac tactile sensors},
   year = {2026},
   howpublished = {\url{https://github.com/WT-MM/PyFlexiTac}},
-  note = {Version 0.3.0},
+  note = {Version 0.3.1},
 }
 ```
 

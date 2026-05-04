@@ -61,6 +61,15 @@ def detect_board() -> tuple[str, str]:
     raise FlashError(f"multiple boards detected; pass --port and --fqbn:\n{listing}")
 
 
+def _require_arduino_cli() -> None:
+    if shutil.which("arduino-cli") is None:
+        raise FlashError(
+            "arduino-cli not found on PATH. Install it (e.g. `brew install arduino-cli`) and run "
+            "`arduino-cli core install arduino:avr`. See "
+            "https://arduino.github.io/arduino-cli/latest/installation/"
+        )
+
+
 def flash(
     *,
     port: str,
@@ -72,10 +81,7 @@ def flash(
     verbose: bool = False,
 ) -> None:
     """Render firmware and upload it to ``port``."""
-    if shutil.which("arduino-cli") is None:
-        raise FlashError(
-            "arduino-cli not found on PATH. Install from https://arduino.github.io/arduino-cli/latest/installation/"
-        )
+    _require_arduino_cli()
 
     rendered = render_template(rows=rows, cols=cols, baud=baud, mux_offset=mux_offset)
     with tempfile.TemporaryDirectory(prefix="flexitac-") as tmp:
@@ -93,7 +99,7 @@ def _run(cmd: list[str], *, verbose: bool = False, capture: bool = False) -> sub
     except FileNotFoundError as exc:
         raise FlashError(f"command not found: {cmd[0]}") from exc
     if result.returncode != 0:
-        msg = (result.stderr or result.stdout or "").strip()
+        msg = (result.stderr or result.stdout or "").strip() or "(see output above)"
         raise FlashError(f"{' '.join(cmd)} failed: {msg}")
     return result
 
@@ -118,12 +124,7 @@ def main(argv: list[str] | None = None) -> int:
     logger = configure_logging(verbose=args.verbose)
 
     try:
-        if shutil.which("arduino-cli") is None:
-            raise FlashError(
-                "arduino-cli not found on PATH. Install it (e.g. `brew install arduino-cli`) and run "
-                "`arduino-cli core install arduino:avr`. See "
-                "https://arduino.github.io/arduino-cli/latest/installation/"
-            )
+        _require_arduino_cli()
 
         port, fqbn = args.port, args.fqbn
         if port is None or fqbn is None:
