@@ -10,6 +10,9 @@ Serial port permissions apply to both flashing and reading. If you hit
 `Permission denied` with either `flexitac-flash` or read tools like
 `flexitac-stream`/`flexitac-heatmap`, see the note in [`flexitac-flash`](#flexitac-flash).
 
+## Video Tutorial (sound on)
+https://github.com/user-attachments/assets/779169dc-985b-4b29-9519-67c96735edf4
+
 ## Install
 
 ```bash
